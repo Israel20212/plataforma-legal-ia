@@ -37,30 +37,57 @@
             <p class="mt-2 text-gray-600">{{ $document->summary }}</p>
         </div>
 
-        <div class="mt-4">
-            <h3 class="text-lg font-semibold">Entidades Extraídas</h3>
-            <ul class="mt-2 text-gray-600 list-disc list-inside">
-                @foreach(json_decode($document->extracted_entities, true) as $entityType => $entities)
-                    <li><strong>{{ ucfirst($entityType) }}:</strong>
-                        <ul class="list-disc list-inside ml-4">
-                            @foreach($entities as $entity)
-                                <li>{{ $entity }}</li>
-                            @endforeach
-                        </ul>
-                    </li>
-                @endforeach
-            </ul>
+        <div class="mt-6">
+            <h3 class="text-lg font-semibold mb-3">Entidades Extraídas</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                @php
+                    $entities = json_decode($document->extracted_entities, true) ?? [];
+                    $colors = [
+                        'person' => 'bg-blue-100 text-blue-800',
+                        'organization' => 'bg-green-100 text-green-800',
+                        'location' => 'bg-yellow-100 text-yellow-800',
+                        'place' => 'bg-yellow-100 text-yellow-800', // Alias
+                        'date' => 'bg-purple-100 text-purple-800',
+                        'time' => 'bg-cyan-100 text-cyan-800',
+                        'money' => 'bg-pink-100 text-pink-800',
+                        'value' => 'bg-orange-100 text-orange-800',
+                        'default' => 'bg-gray-100 text-gray-800',
+                    ];
+                    $translations = [
+                        'person' => 'Persona',
+                        'organization' => 'Organización',
+                        'location' => 'Lugar',
+                        'place' => 'Lugar', // Alias
+                        'date' => 'Fecha',
+                        'time' => 'Tiempo',
+                        'money' => 'Valor Monetario',
+                        'value' => 'Valor',
+                    ];
+                @endphp
+
+                @forelse($entities as $entity)
+                    @if(isset($entity['entity']) && isset($entity['type']))
+                        <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                            <h4 class="font-bold text-md text-gray-800 mb-2">{{ $entity['entity'] }}</h4>
+                            @php
+                                $type = strtolower($entity['type']);
+                                $translatedType = $translations[$type] ?? ucfirst($type);
+                                $colorClass = $colors[$type] ?? $colors['default'];
+                            @endphp
+                            <span class="text-xs font-medium px-2.5 py-0.5 rounded-full {{ $colorClass }}">
+                                {{ $translatedType }}
+                            </span>
+                        </div>
+                    @endif
+                @empty
+                    <p class="text-gray-500 col-span-full">No se encontraron entidades en el documento.</p>
+                @endforelse
+            </div>
         </div>
 
         <!-- ❓ Pregunta personalizada -->
         <form method="POST" action="{{ route('documents.preguntar', $document->id) }}" class="mt-6 space-y-4">
             @csrf
-            <div>
-                <label for="pregunta" class="block text-sm font-medium text-gray-700">Haz una nueva pregunta al documento:</label>
-                <input type="text" id="pregunta" name="pregunta" required
-                       placeholder="Ej. ¿Qué sanción se menciona en el documento?"
-                       class="mt-1 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none">
-            </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700">Selecciona el modelo de IA:</label>
                 <div id="model-selector-pregunta" class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">

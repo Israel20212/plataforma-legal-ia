@@ -17,6 +17,16 @@ Route::get('/register', [AuthController::class, 'showRegister'])->name('register
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Página de Aviso de Privacidad
+Route::get('/aviso-de-privacidad', function () {
+    return view('privacy-policy');
+})->name('privacy.policy');
+
+// Página de Términos y Condiciones
+Route::get('/terminos-y-condiciones', function () {
+    return view('terms-and-conditions');
+})->name('terms.conditions');
+
 // 🧭 Dashboard protegido
 Route::get('/dashboard', function () {
     return view('dashboard');
