@@ -80,7 +80,24 @@ RESPUESTA ESTRUCTURADA:
                 // Parsear la respuesta estructurada
                 $analysis = $this->extractSection($fullResponse, 'ANALYSIS');
                 $summary = $this->extractSection($fullResponse, 'SUMMARY');
-                $entities = $this->extractSection($fullResponse, 'ENTITIES');
+                $entitiesRaw = $this->extractSection($fullResponse, 'ENTITIES');
+
+                // Validar y limpiar el JSON de entidades
+                $entities = null;
+                if (!empty($entitiesRaw)) {
+                    try {
+                        // Intentar decodificar el JSON
+                        $decoded = json_decode($entitiesRaw, true);
+                        // Verificar si el JSON es válido y no está vacío
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                            $entities = $entitiesRaw; // Guardar como string JSON válido
+                        } else {
+                            Log::warning('El JSON de entidades extraídas no es válido para el documento ' . $this->document->id, ['raw_entities' => $entitiesRaw]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Excepción al decodificar el JSON de entidades para el documento ' . $this->document->id, ['error' => $e->getMessage()]);
+                    }
+                }
 
                 // Guardar el log de análisis
                 $this->document->analysisLogs()->create([
@@ -92,7 +109,7 @@ RESPUESTA ESTRUCTURADA:
 
                 // Actualizar el documento
                 $this->document->summary = $summary;
-                $this->document->extracted_entities = $entities;
+                $this->document->extracted_entities = $entities; // Guardar el JSON validado
                 $this->document->save();
                 Log::info('Documento actualizado con resumen y entidades.');
 
@@ -146,9 +163,9 @@ RESPUESTA ESTRUCTURADA:
 
         // Clean up the content, especially for JSON
         $content = trim($content);
-        if (str_starts_with($content, '```json')) {
-            $content = str_replace('```json', '', $content);
-            $content = rtrim($content, '`');
+        // Remove markdown code blocks for JSON
+        if (preg_match('/^```json\s*(.*?)\s*```$/s', $content, $jsonMatches)) {
+            $content = $jsonMatches[1];
         }
         $content = trim($content);
 

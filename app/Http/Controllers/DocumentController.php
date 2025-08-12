@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ProcessDocumentAnalysis;
-use App\Models\AnalysisLog;
 use App\Models\Document;
-use App\Services\OpenAIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Jobs\ProcessDocumentAnalysis;
+use App\Models\AnalysisLog;
+use App\Services\OpenAIService;
 use Smalot\PdfParser\Parser;
 
 class DocumentController extends Controller
@@ -34,13 +34,13 @@ class DocumentController extends Controller
             });
         }
 
-        $documentsByYear = $query->orderBy('created_at', 'desc')
+        $documentsByDate = $query->orderBy('created_at', 'desc')
             ->get()
             ->groupBy(function($date) {
-                return $date->created_at->year;
+                return $date->created_at->format('d-m-Y');
             });
 
-        return view('documents.index', compact('documentsByYear'));
+        return view('documents.index', ['documentsByDate' => $documentsByDate]);
     }
 
     public function create()
@@ -50,6 +50,9 @@ class DocumentController extends Controller
 
     public function store(Request $request)
     {
+        // Aumentar el tiempo de ejecución a 5 minutos (300 segundos) para esta operación
+        set_time_limit(300);
+
         $request->validate([
             'titulo' => 'required|string|max:255',
             'descripcion' => 'nullable|string',
@@ -59,16 +62,13 @@ class DocumentController extends Controller
 
         $archivoPath = $request->file('archivo')->store('documentos', 'public');
 
-        $document = Document::create([
+        Document::create([
             'user_id' => Auth::id(),
             'titulo' => $request->titulo,
             'descripcion' => $request->descripcion,
             'tipo_documento' => $request->tipo_documento,
             'archivo' => $archivoPath,
         ]);
-
-        // Process document with AI after creation
-        $this->processDocumentAI($document);
 
         return redirect()->route('documents.index')->with('success', 'Documento subido correctamente.');
     }
@@ -134,10 +134,6 @@ class DocumentController extends Controller
 
         $document->update($updateData);
 
-        // Re-process document with AI after update if content might have changed (e.g., if file was re-uploaded, though not implemented here)
-        // For now, we'll just re-process to ensure summary/entities are up-to-date if the document itself was modified.
-        $this->processDocumentAI($document);
-
         return redirect()->route('documents.index')->with('success', 'Documento actualizado correctamente.');
     }
 
@@ -153,40 +149,11 @@ class DocumentController extends Controller
         return redirect()->route('documents.index')->with('success', 'Documento eliminado correctamente.');
     }
 
-    private function processDocumentAI(Document $document)
-    {
-        try {
-            $pdfPath = storage_path("app/public/" . $document->archivo);
-            $parser = new Parser();
-            $pdf = $parser->parseFile($pdfPath);
-            $text = $pdf->getText();
-
-            // 1. Resumen (chunkable y con tokens optimizados)
-            $summaryPrompt = "Summarize the key points of the following text in under 300 words:
-
----
-" . $text;
-            $summaryResponse = $this->openAIService->callOpenAIAPI($summaryPrompt, null, 450, 0.5, true);
-            $document->summary = $summaryResponse['choices'][0]['message']['content'] ?? 'Could not generate summary.';
-
-            // 2. Extracción de Entidades (chunkable y con tokens optimizados)
-            $entitiesPrompt = "Extract named entities (people, organizations, locations, dates, monetary values) from this text. Return as a JSON array of objects with 'entity' and 'type' keys. Example: [{'entity': 'John Doe', 'type': 'Person'}]:
-
----
-" . $text;
-            $entitiesResponse = $this->openAIService->callOpenAIAPI($entitiesPrompt, null, 500, 0.5, true);
-            $entitiesContent = $entitiesResponse['choices'][0]['message']['content'] ?? '[]';
-            $document->extracted_entities = json_decode($entitiesContent, true);
-
-            $document->save();
-
-        } catch (\Exception $e) {
-            Log::error('Error processing document with OpenAI: ' . $e->getMessage());
-        }
-    }
-
     public function analizar(Request $request, Document $document)
     {
+        // Aumentar el tiempo de ejecución a 5 minutos (300 segundos) para esta operación
+        set_time_limit(300);
+
         if ($document->user_id !== Auth::id()) {
             abort(403);
         }
@@ -196,13 +163,18 @@ class DocumentController extends Controller
             'question' => 'nullable|string|max:1000', // Allow specific questions
         ]);
 
-        $model = $request->input('model');
-        // Use the provided question or default to a general analysis
-        $question = $request->input('question', 'Análisis General del Documento');
+        try {
+            $model = $request->input('model');
+            $question = $request->input('question', 'Análisis General del Documento');
 
-        ProcessDocumentAnalysis::dispatch($document, $model, $question);
+            ProcessDocumentAnalysis::dispatch($document, $model, $question);
 
-        return back()->with('status', 'El análisis ha comenzado. Los resultados aparecerán en breve.');
+            return back()->with('status', 'El análisis ha comenzado. Los resultados aparecerán en breve.');
+
+        } catch (\Exception $e) {
+            Log::error('Error dispatching analysis job: ' . $e->getMessage());
+            return back()->with('error', 'No se pudo iniciar el análisis. Por favor, inténtelo de nuevo más tarde.');
+        }
     }
 
     public function checkAnalysisStatus(Document $document)

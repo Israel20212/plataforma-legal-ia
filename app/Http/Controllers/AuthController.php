@@ -25,6 +25,7 @@ class AuthController extends Controller
             'name' => 'required|string|max:100',
             'email' => 'required|email|unique:users',
             'password' => 'required|string|min:6|confirmed',
+            'terms' => 'accepted',
         ]);
 
         $user = User::create([
@@ -32,6 +33,14 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
+        // Asignar rol de 'admin' al primer usuario registrado.
+        if (User::count() == 1) {
+            $user->assignRole('admin');
+        } else {
+            // Asignar rol de 'user' a los demás usuarios.
+            $user->assignRole('user');
+        }
 
         Auth::login($user);
 

@@ -51,3 +51,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/perfil', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/perfil', [ProfileController::class, 'update'])->name('profile.update');
 });
+
+// 👑 Rutas de administración
+Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/', [App\Http\Controllers\AdminController::class, 'dashboard'])->name('admin.dashboard');
+    Route::get('/users', [App\Http\Controllers\AdminController::class, 'users'])->name('admin.users');
+    Route::post('/users/{user}/role', [App\Http\Controllers\AdminController::class, 'assignRole'])->name('admin.users.role');
+    Route::get('/roles', [App\Http\Controllers\AdminController::class, 'roles'])->name('admin.roles');
+    Route::post('/roles', [App\Http\Controllers\AdminController::class, 'createRole'])->name('admin.roles.create');
+    Route::put('/roles/{role}', [App\Http\Controllers\AdminController::class, 'updateRole'])->name('admin.roles.update');
+});

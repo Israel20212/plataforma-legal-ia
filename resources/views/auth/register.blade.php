@@ -45,6 +45,16 @@
             class="w-full mt-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
     </div>
 
+    <div class="flex items-center">
+        <input type="checkbox" name="terms" id="terms" required
+            class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
+        <label for="terms" class="ml-2 block text-sm text-gray-900">
+            Acepto los
+            <a href="{{ route('terms.conditions') }}" class="text-primary hover:underline">Términos y Condiciones</a> y el
+            <a href="{{ route('privacy.policy') }}" class="text-primary hover:underline">Aviso de Privacidad</a>.
+        </label>
+    </div>
+
     <button type="submit"
         class="w-full bg-blue-900 text-white py-2 rounded-lg transition duration-300">
         Registrarse

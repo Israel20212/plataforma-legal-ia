@@ -19,6 +19,9 @@
                         <a href="{{ route('dashboard') }}" class="text-gray-700 hover:text-primary text-sm">Dashboard</a>
                         <a href="{{ route('documents.index') }}" class="text-gray-700 hover:text-primary text-sm">Documentos</a>
                         <a href="{{ route('profile.edit') }}" class="text-gray-700 hover:text-primary text-sm">Perfil</a>
+                        @role('admin')
+                        <a href="{{ route('admin.dashboard') }}" class="text-gray-700 hover:bg-blue-100 text-sm font-semibold bg-blue-50 px-3 py-1 rounded-md">Panel Admin</a>
+                        @endrole
                     @endauth
                 </div>
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class OpenAIService
 {
@@ -19,7 +20,7 @@ class OpenAIService
         $this->chunkSize = config('openai.chunk_size', 2000); // Tamaño del chunk en caracteres
     }
 
-    public function callOpenAIAPI(string $prompt, string $model = null, int $maxTokens = null, float $temperature = 0.5, bool $isChunkable = false)
+    public function callOpenAIAPI(string $prompt, ?string $model = null, ?int $maxTokens = null, float $temperature = 0.5, bool $isChunkable = false)
     {
         $model = $model ?? $this->model;
         $maxTokens = $maxTokens ?? $this->maxTokens;
@@ -46,10 +47,12 @@ class OpenAIService
 
     private function makeApiCall(string $prompt, string $model, int $maxTokens, float $temperature)
     {
+        Log::info("Realizando llamada a la API de OpenAI", ['model' => $model]);
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json',
-        ])->post('https://api.openai.com/v1/chat/completions', [
+        ])->timeout(180)->post('https://api.openai.com/v1/chat/completions', [
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => 'You are a helpful legal assistant.'],
@@ -60,10 +63,24 @@ class OpenAIService
         ]);
 
         if ($response->failed()) {
+            Log::error("Error en la solicitud HTTP a OpenAI", [
+                'status' => $response->status(),
+                'response' => $response->body()
+            ]);
             $response->throw();
         }
 
-        return $response->json();
+        $jsonResponse = $response->json();
+
+        if (isset($jsonResponse['error'])) {
+            Log::error("Error devuelto por la API de OpenAI", [
+                'error' => $jsonResponse['error']
+            ]);
+            throw new \Exception("OpenAI API Error: " . $jsonResponse['error']['message']);
+        }
+
+        Log::info("Llamada a la API de OpenAI exitosa");
+        return $jsonResponse;
     }
 
     private function splitTextIntoChunks(string $text): array

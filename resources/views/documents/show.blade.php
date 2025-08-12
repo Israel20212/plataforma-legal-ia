@@ -107,29 +107,41 @@
             </button>
         </form>
     @else
-        <p class="text-gray-500 text-sm mb-4">
-            Este documento aún no ha sido analizado por IA.
-        </p>
-        <form method="POST" action="{{ route('documents.analizar', $document->id) }}" class="space-y-4">
-            @csrf
-            <input type="hidden" name="question" value="Análisis General del Documento">
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Selecciona el modelo de IA para el primer análisis:</label>
-                <div id="model-selector-analisis" class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    @foreach(config('openai.models') as $key => $value)
-                        <div class="model-option p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50"
-                             data-value="{{ $key }}">
-                            <h4 class="font-semibold text-lg">{{ $value }}</h4>
-                            <p class="text-sm text-gray-500">{{ $key === 'gpt-4o-mini' ? 'Más rápido y económico' : 'El más potente y preciso' }}</p>
-                        </div>
-                    @endforeach
+        <div id="analysis-pending-section">
+            <p class="text-gray-500 text-sm mb-4">
+                Este documento aún no ha sido analizado por IA.
+            </p>
+            <form id="analysis-form" method="POST" action="{{ route('documents.analizar', $document->id) }}" class="space-y-4">
+                @csrf
+                <input type="hidden" name="question" value="Análisis General del Documento">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Selecciona el modelo de IA para el primer análisis:</label>
+                    <div id="model-selector-analisis" class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        @foreach(config('openai.models') as $key => $value)
+                            <div class="model-option p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50"
+                                 data-value="{{ $key }}">
+                                <h4 class="font-semibold text-lg">{{ $value }}</h4>
+                                <p class="text-sm text-gray-500">{{ $key === 'gpt-4o-mini' ? 'Más rápido y económico' : 'El más potente y preciso' }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                    <input type="hidden" name="model" id="model_analisis">
                 </div>
-                <input type="hidden" name="model" id="model_analisis">
+                <button type="submit" class="bg-blue-900 text-white px-4 py-2 rounded transition">
+                    🧠 Analizar con IA
+                </button>
+            </form>
+        </div>
+
+        <!-- Barra de Progreso (inicialmente oculta) -->
+        <div id="progress-section" class="hidden mt-6">
+            <h4 class="text-lg font-semibold text-gray-700 mb-2">Analizando tu documento...</h4>
+            <p class="text-sm text-gray-500 mb-4">Este proceso puede tardar unos minutos. Por favor, no cierres esta ventana.</p>
+            <div class="w-full bg-gray-200 rounded-full h-4">
+                <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
-            <button type="submit" class="bg-blue-900 text-white px-4 py-2 rounded transition">
-                🧠 Analizar con IA
-            </button>
-        </form>
+            <p id="progress-text" class="text-center text-sm font-medium text-gray-600 mt-2">0%</p>
+        </div>
     @endif
 </div>
 
@@ -176,6 +188,70 @@
                     modelOptionsPregunta.forEach(opt => opt.classList.remove('border-blue-500', 'bg-blue-50'));
                     option.classList.add('border-blue-500', 'bg-blue-50');
                     modelInputPregunta.value = option.dataset.value;
+                });
+            });
+        }
+
+        const analysisForm = document.getElementById('analysis-form');
+        if (analysisForm) {
+            analysisForm.addEventListener('submit', function (e) {
+                e.preventDefault(); // Prevenir el envío normal del formulario
+
+                // Ocultar el formulario y mostrar la barra de progreso
+                document.getElementById('analysis-pending-section').classList.add('hidden');
+                const progressSection = document.getElementById('progress-section');
+                progressSection.classList.remove('hidden');
+
+                const progressBar = document.getElementById('progress-bar');
+                const progressText = document.getElementById('progress-text');
+                let progress = 0;
+
+                // Simular el progreso inicial para dar feedback inmediato
+                const progressInterval = setInterval(() => {
+                    if (progress < 90) {
+                        progress += 5;
+                        progressBar.style.width = progress + '%';
+                        progressText.textContent = progress + '%';
+                    } else {
+                        clearInterval(progressInterval); // Detener en 90% hasta que el backend confirme
+                    }
+                }, 1000); // Aumenta 5% cada segundo
+
+                // Enviar el formulario en segundo plano
+                const formData = new FormData(analysisForm);
+                fetch(analysisForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                }).then(response => {
+                    if (response.ok) {
+                        // Si el formulario se envió correctamente, empezar a verificar el estado
+                        const checkStatusInterval = setInterval(() => {
+                            fetch(`{{ route('documents.analysis_status', $document->id) }}`)
+                                .then(res => res.json())
+                                .then(data => {
+                                    if (data.analysis_complete) {
+                                        clearInterval(checkStatusInterval);
+                                        clearInterval(progressInterval); // Asegurarse de detener el otro intervalo
+                                        
+                                        // Completar la barra y recargar
+                                        progressBar.style.width = '100%';
+                                        progressText.textContent = '100%';
+                                        setTimeout(() => window.location.reload(), 500);
+                                    }
+                                });
+                        }, 5000); // Verificar cada 5 segundos
+                    } else {
+                        // Si hay un error al enviar el formulario, mostrar un error
+                        clearInterval(progressInterval);
+                        progressSection.innerHTML = '<p class="text-red-500">Hubo un error al iniciar el análisis. Por favor, intenta recargar la página.</p>';
+                    }
+                }).catch(error => {
+                    console.error('Error submitting form:', error);
+                    clearInterval(progressInterval);
+                    progressSection.innerHTML = '<p class="text-red-500">Hubo un error de red. Por favor, comprueba tu conexión e inténtalo de nuevo.</p>';
                 });
             });
         }

@@ -40,11 +40,6 @@
 </form>
 
 <div class="mt-6 text-center text-sm text-gray-600">
-    <p>
-        Al continuar, aceptas nuestro
-        <a href="{{ route('privacy.policy') }}" class="text-primary hover:underline">Aviso de Privacidad</a> y nuestros
-        <a href="{{ route('terms.conditions') }}" class="text-primary hover:underline">Términos y Condiciones</a>.
-    </p>
     <p class="mt-2">
         ¿No tienes una cuenta?
         <a href="{{ route('register') }}" class="text-primary hover:underline">Regístrate</a>

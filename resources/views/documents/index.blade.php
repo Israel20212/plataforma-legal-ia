@@ -37,9 +37,9 @@
     </div>
 @endif
 
-@if($documentsByYear->count())
-    @foreach($documentsByYear as $year => $documents)
-        <h3 class="text-xl font-bold text-gray-800 mt-8 mb-4">{{ $year }}</h3>
+@if($documentsByDate->count())
+    @foreach($documentsByDate as $date => $documents)
+        <h3 class="text-xl font-bold text-gray-800 mt-8 mb-4">{{ $date }}</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             @foreach($documents as $doc)
                 <div class="bg-white border border-gray-200 rounded-lg shadow p-5 hover:shadow-md transition">
@@ -74,6 +74,6 @@
         </div>
     @endforeach
 @else
-    <p class="text-gray-600">Aún no has subido ningún documento.</p>
+    <p class="text-gray-600\">Aún no has subido ningún documento.</p>
 @endif
 @endsection
