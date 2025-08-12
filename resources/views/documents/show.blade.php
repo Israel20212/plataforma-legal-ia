@@ -219,11 +219,15 @@
 
                 // Enviar el formulario en segundo plano
                 const formData = new FormData(analysisForm);
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
                 fetch(analysisForm.action, {
                     method: 'POST',
+                    credentials: 'same-origin', // ¡MUY IMPORTANTE! Envía las cookies de sesión.
                     body: formData,
                     headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        'X-CSRF-TOKEN': csrfToken, // Token leído desde la etiqueta meta.
+                        'Accept': 'application/json' // Indicar que esperamos una respuesta JSON.
                     }
                 }).then(response => {
                     if (response.ok) {
