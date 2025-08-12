@@ -151,30 +151,26 @@ class DocumentController extends Controller
 
     public function analizar(Request $request, Document $document)
     {
-        // Aumentar el tiempo de ejecución a 5 minutos (300 segundos) para esta operación
-        set_time_limit(300);
-
         if ($document->user_id !== Auth::id()) {
             abort(403);
         }
 
-        $request->validate([
-            'model' => 'required|string|in:' . implode(',', array_keys(config('openai.models'))),
-            'question' => 'nullable|string|max:1000', // Allow specific questions
+        // 1. Marcar que el análisis está en proceso
+        $document->update([
+            'summary' => null,
+            'extracted_entities' => null,
+            'analysis_complete' => false,
         ]);
 
-        try {
-            $model = $request->input('model');
-            $question = $request->input('question', 'Análisis General del Documento');
+        // 2. Despachar el job solo con el ID del documento y los parámetros necesarios
+        ProcessDocumentAnalysis::dispatch(
+            $document->id,
+            $request->input('model'),
+            $request->input('question', 'Análisis General del Documento')
+        );
 
-            ProcessDocumentAnalysis::dispatch($document, $model, $question);
-
-            return back()->with('status', 'El análisis ha comenzado. Los resultados aparecerán en breve.');
-
-        } catch (\Exception $e) {
-            Log::error('Error dispatching analysis job: ' . $e->getMessage());
-            return back()->with('error', 'No se pudo iniciar el análisis. Por favor, inténtelo de nuevo más tarde.');
-        }
+        // 3. Devolver una respuesta JSON que el frontend espera
+        return response()->json(['status' => 'analysis_queued'], 202);
     }
 
     public function checkAnalysisStatus(Document $document)
@@ -183,8 +179,9 @@ class DocumentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
         }
 
-        $isComplete = $document->summary && $document->extracted_entities;
+        // Refrescar el modelo para obtener el estado más reciente de la base de datos
+        $document->refresh();
 
-        return response()->json(['analysis_complete' => $isComplete]);
+        return response()->json(['analysis_complete' => (bool)$document->analysis_complete]);
     }
 }
