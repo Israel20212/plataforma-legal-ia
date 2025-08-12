@@ -49,8 +49,8 @@ return [
 
         'documents' => [
             'driver' => 'local',
-            'root' => storage_path('app/documents'),
-            'throw' => true,
+            'root'   => env('DOCS_PATH', storage_path('app/documents')),
+            'throw'  => true,
         ],
 
         's3' => [
