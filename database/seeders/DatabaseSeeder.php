@@ -18,11 +18,10 @@ class DatabaseSeeder extends Seeder
             RoleAndPermissionSeeder::class,
         ]);
         
-        // Crear usuario de prueba
-        // User::factory(10)->create();
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // No crear usuarios de prueba en producción
+        // User::factory()->create([
+        //     'name' => 'Test User',
+        //     'email' => 'test@example.com',
+        // ]);
     }
 }
