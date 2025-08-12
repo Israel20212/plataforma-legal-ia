@@ -50,9 +50,6 @@ class DocumentController extends Controller
 
     public function store(Request $request)
     {
-        // Aumentar el tiempo de ejecución a 5 minutos (300 segundos) para esta operación
-        set_time_limit(300);
-
         $request->validate([
             'titulo' => 'required|string|max:255',
             'descripcion' => 'nullable|string',
