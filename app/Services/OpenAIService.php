@@ -2,94 +2,134 @@
 
 namespace App\Services;
 
+use App\Models\Document;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Smalot\PdfParser\Parser;
 
 class OpenAIService
 {
     protected $apiKey;
-    protected $model;
-    protected $maxTokens;
-    protected $chunkSize;
 
     public function __construct()
     {
         $this->apiKey = config('openai.api_key');
-        $this->model = config('openai.model', 'gpt-4');
-        $this->maxTokens = config('openai.max_tokens', 1500);
-        $this->chunkSize = config('openai.chunk_size', 2000); // Tamaño del chunk en caracteres
     }
 
-    public function callOpenAIAPI(string $prompt, ?string $model = null, ?int $maxTokens = null, float $temperature = 0.5, bool $isChunkable = false)
+    /**
+     * Analiza un documento, extrayendo resumen, entidades y análisis detallado.
+     * Lanza una excepción si cualquier paso falla.
+     *
+     * @return array [string $summary, string $entities, string $analysis]
+     * @throws \Throwable
+     */
+    public function analyzeDocument(Document $document, string $model, string $question): array
     {
-        $model = $model ?? $this->model;
-        $maxTokens = $maxTokens ?? $this->maxTokens;
+        try {
+            // 1. Extraer texto del PDF
+            $text = $this->extractTextFromPdf($document);
 
-        // Si el prompt es largo y se marca como chunkable, lo dividimos
-        if ($isChunkable && strlen($prompt) > $this->chunkSize) {
-            $chunks = $this->splitTextIntoChunks($prompt);
-            $responses = [];
+            // 2. Construir el prompt
+            $prompt = $this->buildStructuredPrompt($text);
 
-            foreach ($chunks as $chunk) {
-                $response = $this->makeApiCall($chunk, $model, $maxTokens, $temperature);
-                if (isset($response['choices'][0]['message']['content'])) {
-                    $responses[] = $response['choices'][0]['message']['content'];
-                }
-            }
-            // Para este ejemplo, devolvemos el contenido combinado. 
-            // En un caso real, podríamos necesitar una llamada final para unificar.
-            return ['choices' => [['message' => ['content' => implode("\n\n", $responses)]]]];
+            // 3. Llamar a la API de OpenAI
+            $fullResponse = $this->makeApiCall($prompt, $model);
+
+            // 4. Extraer las secciones de la respuesta
+            $analysis = $this->extractSection($fullResponse, 'ANALYSIS');
+            $summary = $this->extractSection($fullResponse, 'SUMMARY');
+            $entitiesRaw = $this->extractSection($fullResponse, 'ENTITIES');
+
+            // 5. Validar y limpiar el JSON de entidades
+            $entitiesJson = $this->validateAndCleanJson($entitiesRaw, $document->id);
+
+            return [$summary, $entitiesJson, $analysis];
+
+        } catch (\Throwable $e) {
+            Log::error('Error en el proceso de análisis de OpenAI', [
+                'doc_id' => $document->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Re-lanzar la excepción para que el Job que lo llamó falle
+            throw $e;
         }
-
-        // Si no, hacemos una sola llamada
-        return $this->makeApiCall($prompt, $model, $maxTokens, $temperature);
     }
 
-    private function makeApiCall(string $prompt, string $model, int $maxTokens, float $temperature)
+    private function extractTextFromPdf(Document $document): string
     {
-        Log::info("Realizando llamada a la API de OpenAI", ['model' => $model]);
+        $pdfPath = storage_path("app/public/" . $document->archivo);
+        if (!file_exists($pdfPath)) {
+            throw new \Exception("Archivo PDF no encontrado en la ruta: {$pdfPath}");
+        }
+        $parser = new Parser();
+        $pdf = $parser->parseFile($pdfPath);
+        return $pdf->getText();
+    }
 
+    private function buildStructuredPrompt(string $text): string
+    {
+        return "A partir del siguiente texto, realiza tres tareas y estructura tu respuesta exactamente como se indica a continuación:\n\n1.  **Análisis Detallado**: Realiza un análisis detallado del documento, identificando sus partes clave, obligaciones y derechos de forma concisa.\n2.  **Resumen**: Genera un resumen de los puntos clave en menos de 300 palabras.\n3.  **Extracción de Entidades**: Extrae las entidades nombradas (personas, organizaciones, lugares, fechas, valores monetarios) y devuélvelas como un array JSON de objetos con claves 'entity' y 'type'.\n\nTexto del Documento:\n---\n{$text}\n---\n\nRESPUESTA ESTRUCTURADA:\n###ANALYSIS###\n[Aquí tu análisis detallado]\n###SUMMARY###\n[Aquí tu resumen]\n###ENTITIES###\n[Aquí tu array JSON de entidades]";
+    }
+
+    private function makeApiCall(string $prompt, string $model): string
+    {
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json',
         ])->timeout(180)->post('https://api.openai.com/v1/chat/completions', [
             'model' => $model,
             'messages' => [
-                ['role' => 'system', 'content' => 'You are a helpful legal assistant.'],
+                ['role' => 'system', 'content' => 'Eres un asistente legal muy preciso.'],
                 ['role' => 'user', 'content' => $prompt],
             ],
-            'max_tokens' => $maxTokens,
-            'temperature' => $temperature,
+            'max_tokens' => 2000,
+            'temperature' => 0.3,
         ]);
 
         if ($response->failed()) {
-            Log::error("Error en la solicitud HTTP a OpenAI", [
-                'status' => $response->status(),
-                'response' => $response->body()
-            ]);
+            // Esto captura errores de red, timeouts, 5xx, etc.
             $response->throw();
         }
 
         $jsonResponse = $response->json();
 
         if (isset($jsonResponse['error'])) {
-            Log::error("Error devuelto por la API de OpenAI", [
-                'error' => $jsonResponse['error']
-            ]);
-            throw new \Exception("OpenAI API Error: " . $jsonResponse['error']['message']);
+            // Esto captura errores específicos de la API de OpenAI (p.ej. API key inválida)
+            throw new \Exception("Error de la API de OpenAI: " . $jsonResponse['error']['message']);
         }
 
-        Log::info("Llamada a la API de OpenAI exitosa");
-        return $jsonResponse;
+        return $jsonResponse['choices'][0]['message']['content'] ?? '';
     }
 
-    private function splitTextIntoChunks(string $text): array
+    private function extractSection(string $text, string $section): string
     {
-        $chunks = [];
-        $length = strlen($text);
-        for ($i = 0; $i < $length; $i += $this->chunkSize) {
-            $chunks[] = substr($text, $i, $this->chunkSize);
+        $startTag = "###{$section}###";
+        $endTagPattern = '/###[A-Z]+###/';
+        $startPos = strpos($text, $startTag);
+        if ($startPos === false) return '';
+        $startPos += strlen($startTag);
+        preg_match($endTagPattern, $text, $matches, PREG_OFFSET_CAPTURE, $startPos);
+        $content = !empty($matches) ? substr($text, $startPos, $matches[0][1] - $startPos) : substr($text, $startPos);
+        return trim($content);
+    }
+
+    private function validateAndCleanJson(string $rawJson, int $docId): ?string
+    {
+        // Limpiar posible markdown
+        if (preg_match('/^```json\s*(.*?)\s*```$/s', $rawJson, $jsonMatches)) {
+            $rawJson = $jsonMatches[1];
         }
-        return $chunks;
+        $rawJson = trim($rawJson);
+
+        if (empty($rawJson)) return null;
+
+        $decoded = json_decode($rawJson, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $rawJson; // Devolver el string JSON válido
+        }
+
+        Log::warning('El JSON de entidades extraídas no es válido', ['doc_id' => $docId, 'raw_json' => $rawJson]);
+        return null; // Devolver null si el JSON no es válido
     }
 }
