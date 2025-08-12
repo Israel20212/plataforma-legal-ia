@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Document;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage; // <-- AÑADIR ESTA LÍNEA
 use Smalot\PdfParser\Parser;
 
 class OpenAIService
@@ -58,10 +59,11 @@ class OpenAIService
 
     private function extractTextFromPdf(Document $document): string
     {
-        $pdfPath = storage_path("app/public/" . $document->archivo);
-        if (!file_exists($pdfPath)) {
-            throw new \Exception("Archivo PDF no encontrado en la ruta: {$pdfPath}");
+        if (!Storage::disk('documents')->exists($document->archivo)) {
+            $absPath = Storage::disk('documents')->path($document->archivo);
+            throw new \Exception("Archivo PDF no encontrado en la ruta: {$absPath}");
         }
+        $pdfPath = Storage::disk('documents')->path($document->archivo);
         $parser = new Parser();
         $pdf = $parser->parseFile($pdfPath);
         return $pdf->getText();

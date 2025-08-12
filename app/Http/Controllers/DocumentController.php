@@ -60,7 +60,7 @@ class DocumentController extends Controller
             'archivo' => 'required|file|mimes:pdf|max:20480', // 20 MB
         ]);
 
-        $archivoPath = $request->file('archivo')->store('documentos', 'public');
+        $archivoPath = Storage::disk('documents')->putFile('', $request->file('archivo'));
 
         Document::create([
             'user_id' => Auth::id(),
@@ -88,11 +88,11 @@ class DocumentController extends Controller
             abort(403, 'No autorizado para ver este archivo.');
         }
 
-        $path = storage_path('app/public/' . $document->archivo);
-
-        if (!Storage::disk('public')->exists($document->archivo)) {
+        if (!Storage::disk('documents')->exists($document->archivo)) {
             abort(404, 'Archivo no encontrado.');
         }
+
+        $path = Storage::disk('documents')->path($document->archivo);
 
         return response()->file($path, [
             'Content-Type' => 'application/pdf',
@@ -143,7 +143,7 @@ class DocumentController extends Controller
             abort(403);
         }
 
-        Storage::disk('public')->delete($document->archivo);
+        Storage::disk('documents')->delete($document->archivo);
         $document->delete();
 
         return redirect()->route('documents.index')->with('success', 'Documento eliminado correctamente.');
