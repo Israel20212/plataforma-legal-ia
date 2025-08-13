@@ -4,61 +4,71 @@ namespace App\Listeners;
 
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class AssignAdminRole
 {
     /**
+     * Create the event listener.
+     */
+    public function __construct()
+    {
+        //
+    }
+
+    /**
      * Handle the event.
-     *
-     * @param  \Illuminate\Auth\Events\Registered  $event
-     * @return void
      */
     public function handle(Registered $event): void
     {
         /** @var User $user */
         $user = $event->user;
-        $adminEmail = env('ADMIN_EMAIL');
 
-        // Asegurar que todos los permisos existan en la base de datos.
+        // Create permissions first
         $this->createPermissions();
 
-        if ($adminEmail && $user->email === $adminEmail) {
-            // Asignar el rol de Administrador
+        // Check if the user's email matches the admin email from the config
+        if ($user->email === config('services.admin.email')) {
+            // Admin user
             $adminRole = Role::firstOrCreate(['name' => 'admin']);
             $adminRole->givePermissionTo(Permission::all());
             $user->assignRole($adminRole);
         } else {
-            // Asignar el rol de Usuario normal
+            // Normal user
             $userRole = Role::firstOrCreate(['name' => 'user']);
             $permissions = [
-                'ver documentos', 'crear documentos', 'editar documentos',
-                'eliminar documentos', 'analizar documentos'
+                'view documents',
+                'create documents',
+                'edit documents',
+                'delete documents',
+                'analyze documents',
             ];
-            $userRole->syncPermissions($permissions);
+            $userRole->givePermissionTo($permissions);
             $user->assignRole($userRole);
         }
     }
 
     /**
-     * Crea todos los permisos necesarios para la aplicación si no existen.
+     * Create all necessary permissions if they don't exist.
      */
     private function createPermissions(): void
     {
         $permissions = [
-            'ver documentos',
-            'crear documentos',
-            'editar documentos',
-            'eliminar documentos',
-            'analizar documentos',
-            'gestionar usuarios',
-            'gestionar roles',
-            'acceso panel admin'
+            // Document permissions
+            'view documents',
+            'create documents',
+            'edit documents',
+            'delete documents',
+            'analyze documents',
+            // Admin-only permissions
+            'view users',
+            'edit users',
+            'delete users',
         ];
 
-        foreach ($permissions as $permissionName) {
-            Permission::firstOrCreate(['name' => $permissionName]);
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission]);
         }
     }
 }

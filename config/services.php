@@ -39,4 +39,8 @@ return [
         'key' => env('OPENAI_API_KEY'),
     ],
 
+    'admin' => [
+        'email' => env('ADMIN_EMAIL', 'admin@example.com'),
+    ],
+
 ];
